@@ -1,5 +1,7 @@
 #include <string>
 #include <cstring>
+#include <exception>
+#include <stdexcept>
 #include "mod_audio_stream.h"
 //#include <ixwebsocket/IXWebSocket.h>
 #include "WebSocketClient.h"
@@ -74,54 +76,96 @@ public:
 
         // Setup a callback to be fired when a message or an event (open, close, error) is received
         client.setMessageCallback([this](const std::string& message) {
-            eventCallback(MESSAGE, message.c_str());
+            try {
+                eventCallback(MESSAGE, message.c_str());
+            } catch (const std::exception& e) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Exception in message callback: %s\n", e.what());
+            } catch (...) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Unknown exception in message callback\n");
+            }
         });
 
         client.setOpenCallback([this]() {
-            cJSON *root;
-            root = cJSON_CreateObject();
-            cJSON_AddStringToObject(root, "status", "connected");
-            char *json_str = cJSON_PrintUnformatted(root);
-            eventCallback(CONNECT_SUCCESS, json_str);
-            cJSON_Delete(root);
-            switch_safe_free(json_str);
+            try {
+                cJSON *root;
+                root = cJSON_CreateObject();
+                cJSON_AddStringToObject(root, "status", "connected");
+                char *json_str = cJSON_PrintUnformatted(root);
+                eventCallback(CONNECT_SUCCESS, json_str);
+                cJSON_Delete(root);
+                switch_safe_free(json_str);
+            } catch (const std::exception& e) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Exception in open callback: %s\n", e.what());
+            } catch (...) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Unknown exception in open callback\n");
+            }
         });
 
         client.setErrorCallback([this](int code, const std::string &msg) {
-            cJSON *root, *message;
-            root = cJSON_CreateObject();
-            cJSON_AddStringToObject(root, "status", "error");
-            message = cJSON_CreateObject();
-            cJSON_AddNumberToObject(message, "code", code);
-            cJSON_AddStringToObject(message, "error", msg.c_str());
-            cJSON_AddItemToObject(root, "message", message);
+            try {
+                cJSON *root, *message;
+                root = cJSON_CreateObject();
+                cJSON_AddStringToObject(root, "status", "error");
+                message = cJSON_CreateObject();
+                cJSON_AddNumberToObject(message, "code", code);
+                cJSON_AddStringToObject(message, "error", msg.c_str());
+                cJSON_AddItemToObject(root, "message", message);
 
-            char *json_str = cJSON_PrintUnformatted(root);
+                char *json_str = cJSON_PrintUnformatted(root);
 
-            eventCallback(CONNECT_ERROR, json_str);
+                eventCallback(CONNECT_ERROR, json_str);
 
-            cJSON_Delete(root);
-            switch_safe_free(json_str);
+                cJSON_Delete(root);
+                switch_safe_free(json_str);
+            } catch (const std::exception& e) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Exception in error callback: %s\n", e.what());
+            } catch (...) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Unknown exception in error callback\n");
+            }
         });
 
         client.setCloseCallback([this](int code, const std::string &reason) {
-            cJSON *root, *message;
-            root = cJSON_CreateObject();
-            cJSON_AddStringToObject(root, "status", "disconnected");
-            message = cJSON_CreateObject();
-            cJSON_AddNumberToObject(message, "code", code);
-            cJSON_AddStringToObject(message, "reason", reason.c_str());
-            cJSON_AddItemToObject(root, "message", message);
-            char *json_str = cJSON_PrintUnformatted(root);
+            try {
+                cJSON *root, *message;
+                root = cJSON_CreateObject();
+                cJSON_AddStringToObject(root, "status", "disconnected");
+                message = cJSON_CreateObject();
+                cJSON_AddNumberToObject(message, "code", code);
+                cJSON_AddStringToObject(message, "reason", reason.c_str());
+                cJSON_AddItemToObject(root, "message", message);
+                char *json_str = cJSON_PrintUnformatted(root);
 
-            eventCallback(CONNECTION_DROPPED, json_str);
+                eventCallback(CONNECTION_DROPPED, json_str);
 
-            cJSON_Delete(root);
-            switch_safe_free(json_str);
+                cJSON_Delete(root);
+                switch_safe_free(json_str);
+            } catch (const std::exception& e) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Exception in close callback: %s\n", e.what());
+            } catch (...) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Unknown exception in close callback\n");
+            }
         });
 
         // Now that our callback is setup, we can start our background thread and receive messages
-        client.connect();
+        try {
+            client.connect();
+        } catch (const std::exception& e) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Exception in connect: %s\n", e.what());
+            throw; // Re-throw to let caller handle connection failure
+        } catch (...) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Unknown exception in connect\n");
+            throw; // Re-throw to let caller handle connection failure
+        }
     }
 
     switch_media_bug_t *get_media_bug(switch_core_session_t *session) {
@@ -268,21 +312,55 @@ public:
 
     void disconnect() {
         switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_DEBUG, "disconnecting...\n");
-        client.disconnect();
+        try {
+            client.disconnect();
+        } catch (const std::exception& e) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Exception in disconnect: %s\n", e.what());
+        } catch (...) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Unknown exception in disconnect\n");
+        }
     }
 
     bool isConnected() {
-        return client.isConnected();
+        try {
+            return client.isConnected();
+        } catch (const std::exception& e) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Exception in isConnected: %s\n", e.what());
+            return false;
+        } catch (...) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Unknown exception in isConnected\n");
+            return false;
+        }
     }
 
     void writeBinary(uint8_t* buffer, size_t len) {
         if(!this->isConnected()) return;
-        client.sendBinary(buffer, len);
+        try {
+            client.sendBinary(buffer, len);
+        } catch (const std::exception& e) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Exception in writeBinary: %s\n", e.what());
+        } catch (...) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Unknown exception in writeBinary\n");
+        }
     }
 
     void writeText(const char* text) {
         if(!this->isConnected()) return;
-        client.sendMessage(text, strlen(text));
+        try {
+            client.sendMessage(text, strlen(text));
+        } catch (const std::exception& e) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Exception in writeText: %s\n", e.what());
+        } catch (...) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Unknown exception in writeText\n");
+        }
     }
 
     void deleteFiles() {
