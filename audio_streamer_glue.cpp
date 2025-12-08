@@ -2,6 +2,8 @@
 #include <cstring>
 #include <exception>
 #include <stdexcept>
+#include <thread>
+#include <chrono>
 #include "mod_audio_stream.h"
 //#include <ixwebsocket/IXWebSocket.h>
 #include "WebSocketClient.h"
@@ -313,7 +315,11 @@ public:
     void disconnect() {
         switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_DEBUG, "disconnecting...\n");
         try {
+            // Set a flag to prevent timeoutCallback from being called
+            // This helps avoid race condition with destroy
             client.disconnect();
+            // Give disconnect a moment to complete and cancel any pending timeouts
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         } catch (const std::exception& e) {
             switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
                 "Exception in disconnect: %s\n", e.what());
@@ -462,10 +468,24 @@ namespace {
         aStreamer.reset((AudioStreamer *)tech_pvt->pAudioStreamer);
         tech_pvt->pAudioStreamer = nullptr;
 
+        // Disconnect in a separate thread but wait for it to complete
+        // to avoid race condition where timeoutCallback is called on destroyed object
         std::thread t([aStreamer]{
-            aStreamer->disconnect();
+            try {
+                aStreamer->disconnect();
+            } catch (const std::exception& e) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Exception in finish disconnect thread: %s\n", e.what());
+            } catch (...) {
+                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                    "Unknown exception in finish disconnect thread\n");
+            }
         });
         t.detach();
+        
+        // Give disconnect thread a moment to start and signal WebSocketClient
+        // This helps prevent timeoutCallback from being called on destroyed object
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
 }
@@ -799,10 +819,20 @@ extern "C" {
             auto* audioStreamer = (AudioStreamer *) tech_pvt->pAudioStreamer;
             if(audioStreamer) {
                 audioStreamer->deleteFiles();
-                if (text) audioStreamer->writeText(text);
+                if (text) {
+                    try {
+                        audioStreamer->writeText(text);
+                    } catch (...) {
+                        // Ignore exceptions during cleanup
+                    }
+                }
                 finish(tech_pvt);
             }
 
+            // Unlock mutex before destroying to avoid deadlock
+            // if timeoutCallback tries to lock it
+            switch_mutex_unlock(tech_pvt->mutex);
+            
             destroy_tech_pvt(tech_pvt);
 
             switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_INFO, "(%s) stream_session_cleanup: connection closed\n", sessionId);
