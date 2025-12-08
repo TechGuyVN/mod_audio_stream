@@ -315,11 +315,12 @@ public:
     void disconnect() {
         switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_DEBUG, "disconnecting...\n");
         try {
-            // Set a flag to prevent timeoutCallback from being called
-            // This helps avoid race condition with destroy
+            // Disconnect and wait longer to ensure all timeout callbacks are cancelled
+            // This is critical to prevent timeoutCallback from being called on destroyed object
             client.disconnect();
-            // Give disconnect a moment to complete and cancel any pending timeouts
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            // Wait longer to ensure libevent has processed disconnect and cancelled timeouts
+            // This helps prevent the ESRCH error when timeoutCallback tries to lock destroyed mutex
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
         } catch (const std::exception& e) {
             switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
                 "Exception in disconnect: %s\n", e.what());
@@ -452,14 +453,19 @@ namespace {
             speex_resampler_destroy(tech_pvt->resampler);
             tech_pvt->resampler = nullptr;
         }
-        if (tech_pvt->mutex) {
-            switch_mutex_destroy(tech_pvt->mutex);
-            tech_pvt->mutex = nullptr;
-        }
+        // Destroy AudioStreamer first to ensure disconnect() has been called
+        // and all timeout callbacks are cancelled before destroying mutex
         if (tech_pvt->pAudioStreamer) {
             auto* as = (AudioStreamer *) tech_pvt->pAudioStreamer;
             delete as;
             tech_pvt->pAudioStreamer = nullptr;
+        }
+        // Wait a bit more to ensure any pending timeout callbacks have completed
+        // This helps prevent ESRCH error when timeoutCallback tries to lock destroyed mutex
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (tech_pvt->mutex) {
+            switch_mutex_destroy(tech_pvt->mutex);
+            tech_pvt->mutex = nullptr;
         }
     }
 
@@ -468,24 +474,19 @@ namespace {
         aStreamer.reset((AudioStreamer *)tech_pvt->pAudioStreamer);
         tech_pvt->pAudioStreamer = nullptr;
 
-        // Disconnect in a separate thread but wait for it to complete
-        // to avoid race condition where timeoutCallback is called on destroyed object
-        std::thread t([aStreamer]{
-            try {
-                aStreamer->disconnect();
-            } catch (const std::exception& e) {
-                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
-                    "Exception in finish disconnect thread: %s\n", e.what());
-            } catch (...) {
-                switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
-                    "Unknown exception in finish disconnect thread\n");
-            }
-        });
-        t.detach();
-        
-        // Give disconnect thread a moment to start and signal WebSocketClient
-        // This helps prevent timeoutCallback from being called on destroyed object
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // Disconnect synchronously to ensure all timeout callbacks are cancelled
+        // before the object is destroyed. This prevents timeoutCallback from
+        // being called on a destroyed object which causes ESRCH error when
+        // trying to lock a destroyed mutex.
+        try {
+            aStreamer->disconnect();
+        } catch (const std::exception& e) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Exception in finish disconnect: %s\n", e.what());
+        } catch (...) {
+            switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
+                "Unknown exception in finish disconnect\n");
+        }
     }
 
 }
