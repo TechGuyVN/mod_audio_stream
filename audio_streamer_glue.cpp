@@ -317,10 +317,14 @@ public:
         try {
             // Disconnect and wait longer to ensure all timeout callbacks are cancelled
             // This is critical to prevent timeoutCallback from being called on destroyed object
-            client.disconnect();
-            // Wait longer to ensure libevent has processed disconnect and cancelled timeouts
-            // This helps prevent the ESRCH error when timeoutCallback tries to lock destroyed mutex
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            if (client.isConnected()) {
+                client.disconnect();
+                // Wait longer to ensure libevent has processed disconnect and cancelled timeouts
+                // Multiple iterations to ensure timeout events are fully processed
+                for (int i = 0; i < 5; i++) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+            }
         } catch (const std::exception& e) {
             switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, 
                 "Exception in disconnect: %s\n", e.what());
