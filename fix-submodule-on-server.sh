@@ -23,7 +23,8 @@ git submodule update --init --recursive --force libs/libwsc
 echo "Checking out correct commit in submodule..."
 cd libs/libwsc
 git fetch origin
-git checkout 829922b || git checkout main
+# Try to checkout the commit referenced by main repo, or fallback to main
+git checkout d1af6ab || git checkout main
 git pull origin main --no-rebase || git pull origin main
 cd ../..
 
