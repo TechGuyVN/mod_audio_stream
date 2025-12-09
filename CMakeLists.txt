@@ -23,6 +23,10 @@ pkg_check_modules(FreeSWITCH REQUIRED IMPORTED_TARGET freeswitch)
 pkg_get_variable(FS_MOD_DIR freeswitch modulesdir)
 message(STATUS "FreeSWITCH modules dir: ${FS_MOD_DIR}")
 
+# Enable debug logging for libwsc when building with FreeSWITCH
+# This allows WebSocketClient logs to appear in FreeSWITCH logs
+set(LIBWSC_USE_DEBUG ON CACHE BOOL "Enable debug logging for libwsc" FORCE)
+
 add_subdirectory(libs/libwsc)
 
 add_library(mod_audio_stream SHARED 
