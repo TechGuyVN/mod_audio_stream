@@ -6,7 +6,14 @@
 #include <chrono>
 #include "mod_audio_stream.h"
 //#include <ixwebsocket/IXWebSocket.h>
+// Use libwebsockets wrapper instead of libwsc WebSocketClient
+#define USE_LIBWEBSOCKETS 1
+#ifdef USE_LIBWEBSOCKETS
+#include "WebSocketClientWrapper.h"
+using WebSocketClient = WebSocketClientWrapper;
+#else
 #include "WebSocketClient.h"
+#endif
 #include <switch_json.h>
 #include <fstream>
 #include <switch_buffer.h>

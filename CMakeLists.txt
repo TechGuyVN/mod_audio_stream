@@ -23,6 +23,16 @@ pkg_check_modules(FreeSWITCH REQUIRED IMPORTED_TARGET freeswitch)
 pkg_get_variable(FS_MOD_DIR freeswitch modulesdir)
 message(STATUS "FreeSWITCH modules dir: ${FS_MOD_DIR}")
 
+# Find libwebsockets
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBWEBSOCKETS REQUIRED libwebsockets)
+if(NOT LIBWEBSOCKETS_FOUND)
+    message(FATAL_ERROR "libwebsockets not found. Please install libwebsockets-dev")
+endif()
+message(STATUS "libwebsockets found: ${LIBWEBSOCKETS_VERSION}")
+message(STATUS "libwebsockets include dirs: ${LIBWEBSOCKETS_INCLUDE_DIRS}")
+message(STATUS "libwebsockets libraries: ${LIBWEBSOCKETS_LIBRARIES}")
+
 # Enable debug logging for libwsc when building with FreeSWITCH
 # This allows WebSocketClient logs to appear in FreeSWITCH logs
 set(LIBWSC_USE_DEBUG ON CACHE BOOL "Enable debug logging for libwsc" FORCE)
@@ -52,7 +62,7 @@ if(CMAKE_BUILD_TYPE MATCHES "Release")
 endif()
 
 set(CPACK_COMPONENTS_ALL ${PROJECT_NAME} changelog.gz copyright)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libspeexdsp1, openssl, zlib1g, libfreeswitch1")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libspeexdsp1, openssl, zlib1g, libfreeswitch1, libwebsockets19")
 set(CPACK_PACKAGE_NAME "mod-audio-stream")
 set(CMAKE_INSTALL_DOCDIR "share/doc/${CPACK_PACKAGE_NAME}")
 
